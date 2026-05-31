@@ -1,5 +1,8 @@
 import { create } from 'zustand'
 import type { FloorPlanObject, ToolType, CollaboratorCursor, FurnitureSubType } from '@/types'
+import type { ViewMode } from '@/core/SceneManager'
+import type { SunPosition, Location } from '@/core/SunCalculator'
+import { PRESET_CITIES } from '@/core/SunCalculator'
 
 interface DesignerState {
   tool: ToolType
@@ -22,6 +25,18 @@ interface DesignerState {
   setJoined: (v: boolean) => void
   userName: string
   setUserName: (v: string) => void
+  viewMode: ViewMode
+  setViewMode: (mode: ViewMode) => void
+  sunPosition: SunPosition | null
+  setSunPosition: (pos: SunPosition | null) => void
+  location: Location
+  setLocation: (loc: Location) => void
+  analysisDateTime: Date
+  setAnalysisDateTime: (date: Date) => void
+  sunAnalysisEnabled: boolean
+  setSunAnalysisEnabled: (v: boolean) => void
+  showShadowPanel: boolean
+  setShowShadowPanel: (v: boolean) => void
 }
 
 export const useDesignerStore = create<DesignerState>((set) => ({
@@ -58,4 +73,16 @@ export const useDesignerStore = create<DesignerState>((set) => ({
   setJoined: (v) => set({ joined: v }),
   userName: '',
   setUserName: (v) => set({ userName: v }),
+  viewMode: 'plan2d',
+  setViewMode: (mode) => set({ viewMode: mode }),
+  sunPosition: null,
+  setSunPosition: (pos) => set({ sunPosition: pos }),
+  location: PRESET_CITIES[0],
+  setLocation: (loc) => set({ location: loc }),
+  analysisDateTime: new Date(),
+  setAnalysisDateTime: (date) => set({ analysisDateTime: date }),
+  sunAnalysisEnabled: false,
+  setSunAnalysisEnabled: (v) => set({ sunAnalysisEnabled: v }),
+  showShadowPanel: false,
+  setShowShadowPanel: (v) => set({ showShadowPanel: v }),
 }))

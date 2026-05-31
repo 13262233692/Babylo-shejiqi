@@ -8,10 +8,21 @@ import {
   Undo2,
   Redo2,
 } from 'lucide-react'
+import * as Y from 'yjs'
 import { useDesignerStore } from '@/stores/useDesignerStore'
 import { FURNITURE_TEMPLATES } from '@/types'
 import type { ToolType, FurnitureSubType } from '@/types'
 import { CollabBinding } from '@/core/CollabBinding'
+
+const undoManagers = new WeakMap<Y.Doc, Y.UndoManager>()
+
+function getUndoManager(doc: Y.Doc): Y.UndoManager {
+  if (!undoManagers.has(doc)) {
+    const objectsMap = doc.getMap('objects')
+    undoManagers.set(doc, new Y.UndoManager(objectsMap, { trackedOrigins: new Set([doc.clientID]) }))
+  }
+  return undoManagers.get(doc)!
+}
 
 interface ToolbarProps {
   collabRef: React.MutableRefObject<CollabBinding | null>
@@ -32,26 +43,22 @@ export default function Toolbar({ collabRef }: ToolbarProps) {
   const handleUndo = () => {
     const collab = collabRef.current
     if (collab) {
-      collab.getDoc().transact(() => {
-        try {
-          collab.getDoc().undo()
-        } catch {
-          // no undo stack
-        }
-      })
+      try {
+        getUndoManager(collab.getDoc()).undo()
+      } catch {
+        // no undo stack
+      }
     }
   }
 
   const handleRedo = () => {
     const collab = collabRef.current
     if (collab) {
-      collab.getDoc().transact(() => {
-        try {
-          collab.getDoc().redo()
-        } catch {
-          // no redo stack
-        }
-      })
+      try {
+        getUndoManager(collab.getDoc()).redo()
+      } catch {
+        // no redo stack
+      }
     }
   }
 

@@ -7,7 +7,18 @@ export default {
     container: {
       center: true,
     },
-    extend: {},
+    extend: {
+      colors: {
+        brand: '#00d4aa',
+        surface: '#1a1d23',
+        panel: '#2a2d35',
+        border: '#2a3040',
+      },
+      fontFamily: {
+        mono: ['JetBrains Mono', 'monospace'],
+        sans: ['Noto Sans SC', 'sans-serif'],
+      },
+    },
   },
   plugins: [],
 };

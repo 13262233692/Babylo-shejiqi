@@ -5,6 +5,12 @@ import { ObjectFactory } from '@/core/ObjectFactory'
 import { useDesignerStore } from '@/stores/useDesignerStore'
 import type { FloorPlanObject } from '@/types'
 
+const POSITION_PRECISION = 100
+
+function roundToCm(value: number): number {
+  return Math.round(value * POSITION_PRECISION) / POSITION_PRECISION
+}
+
 interface CanvasProps {
   sceneManagerRef: React.MutableRefObject<SceneManager | null>
   collabRef: React.MutableRefObject<CollabBinding | null>
@@ -13,6 +19,10 @@ interface CanvasProps {
 export default function Canvas({ sceneManagerRef, collabRef }: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wallStartRef = useRef<{ x: number; y: number } | null>(null)
+
+  const draggingObjectIdRef = useRef<string | null>(null)
+  const dragStartPositionsRef = useRef<Map<string, any>>(new Map())
+
   const { tool, furnitureSubType, selectedObjectId, joined, roomId, userName } = useDesignerStore()
 
   useEffect(() => {
@@ -64,21 +74,25 @@ export default function Canvas({ sceneManagerRef, collabRef }: CanvasProps) {
       }
 
       if (tool === 'door') {
-        const doorObj = ObjectFactory.createDoor(pos.x)
+        const doorObj = ObjectFactory.createDoor(roundToCm(pos.x))
         collab.addObject(doorObj)
         sm.addObjectToScene(doorObj)
         return
       }
 
       if (tool === 'window') {
-        const winObj = ObjectFactory.createWindow(pos.x)
+        const winObj = ObjectFactory.createWindow(roundToCm(pos.x))
         collab.addObject(winObj)
         sm.addObjectToScene(winObj)
         return
       }
 
       if (tool === 'furniture') {
-        const furnObj = ObjectFactory.createFurniture(furnitureSubType, pos.x, pos.y)
+        const furnObj = ObjectFactory.createFurniture(
+          furnitureSubType,
+          roundToCm(pos.x),
+          roundToCm(pos.y)
+        )
         collab.addObject(furnObj)
         sm.addObjectToScene(furnObj)
         return
@@ -86,34 +100,91 @@ export default function Canvas({ sceneManagerRef, collabRef }: CanvasProps) {
     })
 
     sm.onSceneDrag.add((delta) => {
-      if (tool === 'select' && selectedObjectId) {
-        sm.updateObjectPosition(selectedObjectId, delta.x, delta.y)
+      if (tool !== 'select' || !selectedObjectId) return
 
-        const store = useDesignerStore.getState()
-        const obj = store.objects.get(selectedObjectId)
-        if (obj) {
-          if (obj.type === 'furniture') {
-            collab.updateObject(selectedObjectId, {
-              x: (obj as any).x + delta.x,
-              y: (obj as any).y + delta.y,
-            })
-          } else if (obj.type === 'wall') {
-            collab.updateObject(selectedObjectId, {
-              startX: (obj as any).startX + delta.x,
-              startY: (obj as any).startY + delta.y,
-              endX: (obj as any).endX + delta.x,
-              endY: (obj as any).endY + delta.y,
-            })
+      const store = useDesignerStore.getState()
+      const obj = store.objects.get(selectedObjectId)
+      if (!obj) return
+
+      if (!draggingObjectIdRef.current) {
+        draggingObjectIdRef.current = selectedObjectId
+        dragStartPositionsRef.current.set(selectedObjectId, {
+          type: obj.type,
+          data: JSON.parse(JSON.stringify(obj)),
+        })
+      }
+
+      sm.updateObjectPosition(selectedObjectId, delta.x, delta.y)
+    })
+
+    const handlePointerUp = () => {
+      const draggingId = draggingObjectIdRef.current
+      if (!draggingId) return
+
+      const store = useDesignerStore.getState()
+      const startData = dragStartPositionsRef.current.get(draggingId)
+      const currentObj = store.objects.get(draggingId)
+
+      if (startData && currentObj) {
+        const sm = sceneManagerRef.current
+        const entry = sm?.objectMeshes.get(draggingId)
+        if (entry) {
+          const mesh = entry.mesh
+
+          if (currentObj.type === 'furniture') {
+            const newX = roundToCm(mesh.position.x)
+            const newY = roundToCm(mesh.position.y)
+            const oldX = roundToCm((currentObj as any).x)
+            const oldY = roundToCm((currentObj as any).y)
+            if (newX !== oldX || newY !== oldY) {
+              collab.updateObject(draggingId, { x: newX, y: newY })
+            }
+          } else if (currentObj.type === 'wall') {
+            const wall = currentObj as any
+            const dx = mesh.position.x - (wall.startX + wall.endX) / 2
+            const dy = mesh.position.y - (wall.startY + wall.endY) / 2
+            const newStartX = roundToCm(wall.startX + dx)
+            const newStartY = roundToCm(wall.startY + dy)
+            const newEndX = roundToCm(wall.endX + dx)
+            const newEndY = roundToCm(wall.endY + dy)
+            const oldStartX = roundToCm(wall.startX)
+            const oldStartY = roundToCm(wall.startY)
+            const oldEndX = roundToCm(wall.endX)
+            const oldEndY = roundToCm(wall.endY)
+            if (
+              newStartX !== oldStartX ||
+              newStartY !== oldStartY ||
+              newEndX !== oldEndX ||
+              newEndY !== oldEndY
+            ) {
+              collab.updateObject(draggingId, {
+                startX: newStartX,
+                startY: newStartY,
+                endX: newEndX,
+                endY: newEndY,
+              })
+            }
           } else {
-            collab.updateObject(selectedObjectId, {
-              position: (obj as any).position + delta.x,
-            })
+            const newPos = roundToCm(mesh.position.x)
+            const oldPos = roundToCm((currentObj as any).position)
+            if (newPos !== oldPos) {
+              collab.updateObject(draggingId, { position: newPos })
+            }
           }
         }
       }
-    })
+
+      draggingObjectIdRef.current = null
+      dragStartPositionsRef.current.delete(draggingId)
+    }
+
+    const canvasEl = canvasRef.current
+    canvasEl.addEventListener('pointerup', handlePointerUp)
+    canvasEl.addEventListener('pointerleave', handlePointerUp)
 
     return () => {
+      canvasEl.removeEventListener('pointerup', handlePointerUp)
+      canvasEl.removeEventListener('pointerleave', handlePointerUp)
       sm.dispose()
       collab.destroy()
       sceneManagerRef.current = null
@@ -164,18 +235,20 @@ export default function Canvas({ sceneManagerRef, collabRef }: CanvasProps) {
     const collab = collabRef.current
     if (!collab) return
 
-    const onObjectsChange = () => {
-      const objects = useDesignerStore.getState().objects
+    const onObjectsChange = (state: ReturnType<typeof useDesignerStore.getState>) => {
+      const objects = state.objects
       const sm = sceneManagerRef.current
       if (!sm) return
 
       const currentIds = new Set<string>()
       objects.forEach((obj, id) => {
         currentIds.add(id)
-        sm.addObjectToScene(obj)
+        if (draggingObjectIdRef.current !== id) {
+          sm.addObjectToScene(obj)
+        }
       })
 
-      sm.objectMeshes.forEach((_, id) => {
+      sm.getObjectIds().forEach((id) => {
         if (!currentIds.has(id)) {
           sm.removeObjectFromScene(id)
         }
